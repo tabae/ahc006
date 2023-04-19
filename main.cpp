@@ -60,10 +60,16 @@ struct Input {
     pair<int,int> dst(int id) const;
 } input;
 
+struct Node {
+    pair<int, int> pos;
+    int p, id;
+    Node(pair<int,int> pos, int p, int id) : pos(pos), p(p), id(id) {}
+};
+
 struct Output {
     /*TODO: ここに出力変数を定義する*/
     vector<int> nodes;
-    vector<pair<int,int>> root;
+    vector<Node> root;
     vector<vector<int>> root_id;
     Output();
     void print();
@@ -139,7 +145,7 @@ struct IterationControl {
 namespace Utils {
     long long calcScore(const Output& output);
     int calcDist(const pair<int,int>& a, const pair<int,int>& b);
-    pair<vector<pair<int,int>>,vector<vector<int>>> runInsertTSP(const vector<int>& nodes);
+    pair<vector<Node>,vector<vector<int>>> runInsertTSP(const vector<int>& nodes);
 };
 
 /* ============================================== 
@@ -177,7 +183,7 @@ void Output::print() {
     for(int id: nodes) cout << " " << id + 1;
     cout << endl;
     cout << root.size();
-    for(pair<int,int> node: root) cout << " " << node.first << " " << node.second;
+    for(Node node: root) cout << " " << node.pos.first << " " << node.pos.second;
     cout << endl;
 }
 
@@ -209,6 +215,10 @@ State State::generateState(const State& input_state) {
 
 State2 State2::generateState(const State2& input_state) {
     State2 res = input_state;
+    // 2-opt
+    int a = ryuka.rand(res.output.root.size() - 2) + 1;
+    int b = ryuka.rand(res.output.root.size() - 2) + 1;
+    
     res.score = Utils::calcScore(res.output);
     return res;
 }
@@ -230,23 +240,23 @@ int Utils::calcDist(const pair<int,int>& a, const pair<int,int>& b) {
 long long Utils::calcScore(const Output& output) {
     long long res = 0;
     for(int i = 0; i < output.root.size() - 1; i++) {
-        res += Utils::calcDist(output.root[i], output.root[i+1]);
+        res += Utils::calcDist(output.root[i].pos, output.root[i+1].pos);
     }
     return res;
 }
 
-pair<vector<pair<int,int>>, vector<vector<int>>> Utils::runInsertTSP(const vector<int>& nodes) {
-    vector<pair<int,int>> root;
+pair<vector<Node>, vector<vector<int>>> Utils::runInsertTSP(const vector<int>& nodes) {
+    vector<Node> root;
     vector<vector<int>> root_id(2, vector<int>(nodes.size()));
-    root.push_back({400, 400});
-    root.push_back({400, 400});
+    root.push_back(Node(make_pair(400, 400), 0, -1));
+    root.push_back(Node(make_pair(400, 400), 1, -1));
     for(int i = 0; i < nodes.size(); i++) {
         vector<pair<int,int>> positions = {input.src(nodes[i]), input.dst(nodes[i])};
         for(int p = 0; p < 2; p++) {
             pair<int,int> pos = positions[p];
             int min_dist = 1<<30, min_id = -1;
             for(int j = 0; j < root.size()-1; j++) {
-                int dist = Utils::calcDist(root[j], pos) + Utils::calcDist(root[j+1], pos);
+                int dist = Utils::calcDist(root[j].pos, pos) + Utils::calcDist(root[j+1].pos, pos);
                 if(dist < min_dist) {
                     if(p == 1 && j < root_id[0][i]) ;
                     else {
@@ -256,7 +266,7 @@ pair<vector<pair<int,int>>, vector<vector<int>>> Utils::runInsertTSP(const vecto
                 }
             }
             assert(min_id != -1);
-            root.insert(root.begin() + min_id + 1, pos);
+            root.insert(root.begin() + min_id + 1, Node(pos, p, i));
             root_id[p][i] = min_id + 1;
         }
     }
