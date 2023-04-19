@@ -83,6 +83,7 @@ struct State {
     long long length;
     State() : score(0) {}
     static State initState();
+    static State initState(const vector<int>& nodes);
     static State generateState(const State& input_state);
 };
 
@@ -193,7 +194,7 @@ void Output::print() {
 
 /*TODO: ここで初期解を作成する*/
 State State::initState() {
-    State res;
+    vector<int> nodes;
     // (400,400)に近い方から50個選ぶ
     vector<int> idx(input.n);
     iota(idx.begin(), idx.end(), 0);
@@ -202,17 +203,22 @@ State State::initState() {
         int rdist = max(Utils::calcDist({400, 400}, input.src(r)), Utils::calcDist({400, 400}, input.dst(r)));
         return ldist < rdist; 
     });
-    for(int i = 0; i < 50; i++) res.output.nodes.push_back(idx[i]);
+    for(int i = 0; i < 50; i++) nodes.push_back(idx[i]);
+    return initState(nodes);
+}
+
+State State::initState(const vector<int>& nodes) {
     // とりあえず、挿入法で適当な巡回経路を作る。
-    res.output = Utils::runInsertTSP(res.output.nodes);
+    State res;
+    res.output = Utils::runInsertTSP(nodes);
     res.length = Utils::calcLength(res.output);
     res.score = Utils::calcScore(res.output);
     return res;
 }
 
 /*TODO: ここでinput_stateを変化させた解を作る（局所探索）*/
-State State::generateState(const State& input_state) {
-    State res = input_state;
+State2 State2::generateState(const State2& input_state) {
+    State2 res = input_state;
     // 2-opt
     int a = ryuka.rand(res.output.route.size() - 2) + 1;
     int b = ryuka.rand(res.output.route.size() - 2) + 1;
@@ -232,19 +238,32 @@ State State::generateState(const State& input_state) {
         Node vb = res.output.route[b];
         res.output.route_id[va.p][va.id] = b;
         res.output.route_id[vb.p][vb.id] = a;
+        res.length -= Utils::calcDist(res.output.route[a].pos, res.output.route[a-1].pos);
+        res.length -= Utils::calcDist(res.output.route[a].pos, res.output.route[a+1].pos);
+        res.length -= Utils::calcDist(res.output.route[b].pos, res.output.route[b-1].pos);
+        res.length -= Utils::calcDist(res.output.route[b].pos, res.output.route[b+1].pos);
         swap(res.output.route[a], res.output.route[b]);
         assert(res.output.route_id[0][va.id] < res.output.route_id[1][va.id]);
         assert(res.output.route_id[0][vb.id] < res.output.route_id[1][vb.id]);
-        res.length = Utils::calcLength(res.output);
-        res.score = Utils::calcScore(res.output);
+        res.length += Utils::calcDist(res.output.route[a].pos, res.output.route[a-1].pos);
+        res.length += Utils::calcDist(res.output.route[a].pos, res.output.route[a+1].pos);
+        res.length += Utils::calcDist(res.output.route[b].pos, res.output.route[b-1].pos);
+        res.length += Utils::calcDist(res.output.route[b].pos, res.output.route[b+1].pos);
+        res.score = Utils::calcScore(res.length);
     }
     return res;
 }
 
-State2 State2::generateState(const State2& input_state) {
-    State2 res = input_state;
-    res.length = Utils::calcLength(res.output);
-    res.score = Utils::calcScore(res.output);
+State State::generateState(const State& input_state) {
+    State res = input_state;
+    int x = ryuka.rand(res.output.nodes.size());
+    int y = ryuka.rand(input.n);
+    int count = 0;
+    for(int i : res.output.nodes) count += (i == y); 
+    if(count == 0) {
+        res.output.nodes[x] = y;
+        return initState(res.output.nodes);
+    }
     return res;
 }
 
@@ -260,7 +279,6 @@ int Utils::calcDist(const pair<int,int>& a, const pair<int,int>& b) {
     int res = abs(a.first - b.first) + abs(a.second - b.second);
     return res;
 }
-
 
 /*TODO: ここでスコアを計算する*/
 long long Utils::calcLength(const Output& output) {
@@ -320,7 +338,9 @@ int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
     IterationControl<State> sera;
-    State ans = sera.climb(1.8, State::initState());
+    State pre_ans = sera.climb(1.4, State::initState());
+    IterationControl<State2> funaq;
+    State2 ans = funaq.climb(1.8 - toki.elapsed(), State2::convert(pre_ans));
     //State ans = State::initState();
     ans.output.print();
     cerr << "[INFO] - main - MyScore = " << ans.score << "\n";
