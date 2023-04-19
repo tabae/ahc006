@@ -151,6 +151,7 @@ namespace Utils {
     long long calcScore(long long length);
     int calcDist(const pair<int,int>& a, const pair<int,int>& b);
     Output runInsertTSP(const vector<int>& nodes);
+    Output updateInsertTSP(const Output& output, int del_id, int add_id);
 };
 
 /* ============================================== 
@@ -261,8 +262,11 @@ State State::generateState(const State& input_state) {
     int count = 0;
     for(int i : res.output.nodes) count += (i == y); 
     if(count == 0) {
+        int del_id = res.output.nodes[x];
         res.output.nodes[x] = y;
-        return initState(res.output.nodes);
+        res.output = Utils::updateInsertTSP(res.output, del_id, y);
+        res.length = Utils::calcLength(res.output);
+        res.score = Utils::calcScore(res.length);
     }
     return res;
 }
@@ -327,6 +331,45 @@ Output Utils::runInsertTSP(const vector<int>& nodes) {
         Node v = route[i];
         if(v.id >= 0) route_id[v.p][v.id] = i;
     }
+    Output res;
+    res.nodes = nodes;
+    res.route = route;
+    res.route_id = route_id;
+    return res;
+}
+
+Output Utils::updateInsertTSP(const Output& output, int del_id, int add_id) {
+    vector<int> nodes = output.nodes;
+    vector<Node> route = output.route;
+    vector<vector<int>> route_id = output.route_id;
+    
+    int x = route_id[0][del_id];
+    int y = route_id[1][del_id];
+    route.erase(route.begin() + x);
+    route.erase(route.begin() + y - 1);
+    int id = add_id;
+    vector<pair<int,int>> positions = {input.src(id), input.dst(id)};
+    int src_pos = 0;
+    for(int p = 0; p < 2; p++) {
+        pair<int,int> pos = positions[p];
+        int min_dist = 1<<30, min_id = -1;
+        for(int j = 0; j < route.size()-1; j++) {
+            int dist = Utils::calcDist(route[j].pos, pos) + Utils::calcDist(route[j+1].pos, pos);
+            if(dist < min_dist && j >= src_pos) {
+                min_dist = dist;
+                min_id = j;
+            }
+        }
+        assert(min_id != -1);
+        route.insert(route.begin() + min_id + 1, Node(pos, p, id));
+        src_pos = min_id + 1;
+    }
+
+    for(int i = 1; i < route.size()-1; i++) {
+        Node v = route[i];
+        if(v.id >= 0) route_id[v.p][v.id] = i;
+    }
+
     Output res;
     res.nodes = nodes;
     res.route = route;
