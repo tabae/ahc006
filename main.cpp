@@ -194,15 +194,15 @@ void Output::print() {
 /*TODO: ここで初期解を作成する*/
 State State::initState() {
     State res;
-    // ランダムに50個選ぶ
-    set<pair<int,int>> seen;
-    while(res.output.nodes.size() < 50) {
-        int id = ryuka.rand(input.n);
-        if(seen.count(input.src(id)) || seen.count(input.dst(id))) continue;
-        res.output.nodes.push_back(id);
-        seen.insert(input.src(id));
-        seen.insert(input.dst(id));
-    }
+    // (400,400)に近い方から50個選ぶ
+    vector<int> idx(input.n);
+    iota(idx.begin(), idx.end(), 0);
+    sort(idx.begin(), idx.end(), [&](int l, int r){
+        int ldist = max(Utils::calcDist({400, 400}, input.src(l)), Utils::calcDist({400, 400}, input.dst(l)));
+        int rdist = max(Utils::calcDist({400, 400}, input.src(r)), Utils::calcDist({400, 400}, input.dst(r)));
+        return ldist < rdist; 
+    });
+    for(int i = 0; i < 50; i++) res.output.nodes.push_back(idx[i]);
     // とりあえず、挿入法で適当な巡回経路を作る。
     res.output = Utils::runInsertTSP(res.output.nodes);
     res.length = Utils::calcLength(res.output);
