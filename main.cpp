@@ -69,8 +69,9 @@ struct Node {
 struct Output {
     /*TODO: ここに出力変数を定義する*/
     vector<int> nodes;
-    vector<Node> root;
-    vector<vector<int>> root_id;
+    vector<Node> route;
+    vector<vector<int>> route_id;
+    map<pair<int,int>,int> node_counter;
     Output();
     void print();
 };
@@ -79,6 +80,7 @@ struct Output {
 struct State {
     Output output;
     long long score;
+    long long length;
     State() : score(0) {}
     static State initState();
     static State generateState(const State& input_state);
@@ -143,9 +145,11 @@ struct IterationControl {
 };
 
 namespace Utils {
+    long long calcLength(const Output& output);
     long long calcScore(const Output& output);
+    long long calcScore(long long length);
     int calcDist(const pair<int,int>& a, const pair<int,int>& b);
-    pair<vector<Node>,vector<vector<int>>> runInsertTSP(const vector<int>& nodes);
+    Output runInsertTSP(const vector<int>& nodes);
 };
 
 /* ============================================== 
@@ -182,8 +186,8 @@ void Output::print() {
     cout << nodes.size();
     for(int id: nodes) cout << " " << id + 1;
     cout << endl;
-    cout << root.size();
-    for(Node node: root) cout << " " << node.pos.first << " " << node.pos.second;
+    cout << route.size();
+    for(Node node: route) cout << " " << node.pos.first << " " << node.pos.second;
     cout << endl;
 }
 
@@ -191,17 +195,17 @@ void Output::print() {
 State State::initState() {
     State res;
     // ランダムに50個選ぶ
-    vector<bool> seen(input.n+1, false);
+    set<pair<int,int>> seen;
     while(res.output.nodes.size() < 50) {
         int id = ryuka.rand(input.n);
-        if(seen[id]) continue;
+        if(seen.count(input.src(id)) || seen.count(input.dst(id))) continue;
         res.output.nodes.push_back(id);
-        seen[id] = true;
+        seen.insert(input.src(id));
+        seen.insert(input.dst(id));
     }
     // とりあえず、挿入法で適当な巡回経路を作る。
-    auto [root, root_id] = Utils::runInsertTSP(res.output.nodes);
-    res.output.root = root;
-    res.output.root_id = root_id;
+    res.output = Utils::runInsertTSP(res.output.nodes);
+    res.length = Utils::calcLength(res.output);
     res.score = Utils::calcScore(res.output);
     return res;
 }
@@ -209,16 +213,37 @@ State State::initState() {
 /*TODO: ここでinput_stateを変化させた解を作る（局所探索）*/
 State State::generateState(const State& input_state) {
     State res = input_state;
-    res.score = Utils::calcScore(res.output);
+    // 2-opt
+    int a = ryuka.rand(res.output.route.size() - 2) + 1;
+    int b = ryuka.rand(res.output.route.size() - 2) + 1;
+    auto check = [&](int x, int y) -> bool {
+        Node v = res.output.route[x];
+        assert(v.id >= 0);
+        if(v.p == 0) {
+            if(res.output.route_id[1][v.id] <= y) return false; 
+        } 
+        if(v.p == 1) {
+            if(res.output.route_id[0][v.id] >= y) return false;
+        }
+        return true;
+    };
+    if(check(a, b) && check(b, a)) {
+        Node va = res.output.route[a];
+        Node vb = res.output.route[b];
+        res.output.route_id[va.p][va.id] = b;
+        res.output.route_id[vb.p][vb.id] = a;
+        swap(res.output.route[a], res.output.route[b]);
+        assert(res.output.route_id[0][va.id] < res.output.route_id[1][va.id]);
+        assert(res.output.route_id[0][vb.id] < res.output.route_id[1][vb.id]);
+        res.length = Utils::calcLength(res.output);
+        res.score = Utils::calcScore(res.output);
+    }
     return res;
 }
 
 State2 State2::generateState(const State2& input_state) {
     State2 res = input_state;
-    // 2-opt
-    int a = ryuka.rand(res.output.root.size() - 2) + 1;
-    int b = ryuka.rand(res.output.root.size() - 2) + 1;
-    
+    res.length = Utils::calcLength(res.output);
     res.score = Utils::calcScore(res.output);
     return res;
 }
@@ -227,6 +252,7 @@ State2 State2::convert(const State& input_state) {
     State2 res;
     res.output = input_state.output;
     res.score = input_state.score;
+    res.length = input_state.length;
     return res;
 }
 
@@ -237,48 +263,66 @@ int Utils::calcDist(const pair<int,int>& a, const pair<int,int>& b) {
 
 
 /*TODO: ここでスコアを計算する*/
-long long Utils::calcScore(const Output& output) {
+long long Utils::calcLength(const Output& output) {
     long long res = 0;
-    for(int i = 0; i < output.root.size() - 1; i++) {
-        res += Utils::calcDist(output.root[i].pos, output.root[i+1].pos);
+    for(int i = 0; i < output.route.size() - 1; i++) {
+        res += Utils::calcDist(output.route[i].pos, output.route[i+1].pos);
     }
     return res;
 }
 
-pair<vector<Node>, vector<vector<int>>> Utils::runInsertTSP(const vector<int>& nodes) {
-    vector<Node> root;
-    vector<vector<int>> root_id(2, vector<int>(nodes.size()));
-    root.push_back(Node(make_pair(400, 400), 0, -1));
-    root.push_back(Node(make_pair(400, 400), 1, -1));
-    for(int i = 0; i < nodes.size(); i++) {
-        vector<pair<int,int>> positions = {input.src(nodes[i]), input.dst(nodes[i])};
+long long Utils::calcScore(long long length) {
+    long long res = (100000000 / (1000 + length));
+    return res;
+}
+
+long long Utils::calcScore(const Output& output) {
+    long long res = (100000000 / (1000 + Utils::calcLength(output)));
+    return res;
+}
+
+Output Utils::runInsertTSP(const vector<int>& nodes) {
+    vector<Node> route;
+    vector<vector<int>> route_id(2, vector<int>(input.n));
+    map<pair<int,int>,int> node_counter;
+    route.push_back(Node(make_pair(400, 400), 0, -1));
+    route.push_back(Node(make_pair(400, 400), 1, -1));
+    for(int id : nodes) {
+        vector<pair<int,int>> positions = {input.src(id), input.dst(id)};
+        int src_pos = 0;
         for(int p = 0; p < 2; p++) {
             pair<int,int> pos = positions[p];
             int min_dist = 1<<30, min_id = -1;
-            for(int j = 0; j < root.size()-1; j++) {
-                int dist = Utils::calcDist(root[j].pos, pos) + Utils::calcDist(root[j+1].pos, pos);
-                if(dist < min_dist) {
-                    if(p == 1 && j < root_id[0][i]) ;
-                    else {
-                        min_dist = dist;
-                        min_id = j;
-                    }
+            for(int j = 0; j < route.size()-1; j++) {
+                int dist = Utils::calcDist(route[j].pos, pos) + Utils::calcDist(route[j+1].pos, pos);
+                if(dist < min_dist && j >= src_pos) {
+                    min_dist = dist;
+                    min_id = j;
                 }
             }
             assert(min_id != -1);
-            root.insert(root.begin() + min_id + 1, Node(pos, p, i));
-            root_id[p][i] = min_id + 1;
+            route.insert(route.begin() + min_id + 1, Node(pos, p, id));
+            src_pos = min_id + 1;
         }
     }
-    return {root, root_id};
- }
+    for(int i = 1; i < route.size()-1; i++) {
+        Node v = route[i];
+        if(v.id >= 0) route_id[v.p][v.id] = i;
+    }
+    Output res;
+    res.nodes = nodes;
+    res.route = route;
+    res.route_id = route_id;
+    return res;
+}
 
 int main(int argc, char* argv[]) {
     toki.init();
     input.read();   
     IterationControl<State> sera;
-    //State ans = sera.climb(1.8, State::initState());
-    State ans = State::initState();
+    State ans = sera.climb(1.8, State::initState());
+    //State ans = State::initState();
     ans.output.print();
     cerr << "[INFO] - main - MyScore = " << ans.score << "\n";
+    cerr << "[INFO] - main - MyLength = " << ans.length << "\n";
 }
